@@ -12,6 +12,7 @@ export class FirebaseService {
     public auth: Auth;
     public fireStore: Firestore;
     public usersCollection: CollectionReference;
+    public categoriesCollection: CollectionReference;
     firebaseService: any;
     constructor(private configService: ConfigService) {
         this.app = initializeApp({
@@ -30,6 +31,11 @@ export class FirebaseService {
     }
     private _createCollections() {
         this.usersCollection = collection(this.fireStore, collections.USERS)
+        this.categoriesCollection = collection(this.fireStore, collections.CATEGORIES)
+    }
+
+    public async getUserId(): Promise<string> {
+        return this.auth.currentUser.uid || ''
     }
 
     public async getAll(collectionRef: CollectionReference): Promise<IResponse> {
@@ -57,6 +63,8 @@ export class FirebaseService {
     }
     public async update(collectionRef: CollectionReference, body: any): Promise<IResponse> {
         try {
+            body.updatedDate = Math.floor(Date.now() / 1000);
+            body.updatedBy = await this.getUserId();
             return await setDoc(doc(collectionRef, body.id), body).then(async () => {
                 return await this.getById(collectionRef, body.id)
             })
@@ -67,8 +75,11 @@ export class FirebaseService {
     public async create(collectionRef: CollectionReference, body: any): Promise<IResponse> {
         try {
             delete body.id
+            body.isDelete = false;
+            body.createdDate = Math.floor(Date.now() / 1000);
+            body.createdBy = await this.getUserId();
             return await addDoc(collectionRef, body).then(async (res: DocumentReference) => {
-                return await this.getById(collectionRef ,res.id)
+                return await this.getById(collectionRef, res.id)
             })
         } catch (error) {
             return response(HttpStatus.BAD_REQUEST, {})
@@ -76,10 +87,16 @@ export class FirebaseService {
     }
     public async delete(collectionRef: CollectionReference, id: string): Promise<IResponse> {
         try {
-            const snap = await doc(collectionRef, id)
-            return deleteDoc(snap).then(() => {
-                return response(HttpStatus.OK, {})
-            })
+            const body: any = await this.getById(collectionRef, id);
+            if (body) {
+                body.isDelete = true;
+                body.deletedDate = Math.floor(Date.now() / 1000);
+                body.deletedBy = await this.getUserId();
+                return await setDoc(doc(collectionRef, id), body).then(async () => {
+                    return response(HttpStatus.OK, {})
+                })
+            }
+            return response(HttpStatus.BAD_REQUEST, {})
         } catch {
             return response(HttpStatus.BAD_REQUEST, {})
         }
